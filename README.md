@@ -32,7 +32,7 @@ pip install sentence-transformers umap-learn numpy torch
 # Primary model — E5-Large-v2 (~1.3GB download on first run)
 python pipeline.py --model e5-large-v2
 
-# Twist ending model — MiniLM (~90MB)
+MiniLM (~90MB)
 python pipeline.py --model minilm
 
 # Both at once (for model comparison in the visualizer)
@@ -52,7 +52,7 @@ python -m http.server 8000
 
 If both JSON files are present, the visualizer shows a **model switcher** in the
 top-right corner — click between E5 and MiniLM to compare. The same biases
-surviving in the "lightweight" model is your twist ending.
+surviving in the "lightweight" model
 
 ---
 

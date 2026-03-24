@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Embedding Bias — Geometric Analysis</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Syne:wght@400;700;800&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #04040a;
+  --surface: rgba(255,255,255,0.028);
+  --border: rgba(255,255,255,0.07);
+  --text: #e6e4f2;
+  --muted: rgba(230,228,242,0.38);
+  --accent: #7c6af7;
+  --green: #4ade80;
+  --orange: #fb923c;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Syne', sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  overflow: hidden;
+  height: 100vh; width: 100vw;
+}
+
+#canvas-container { position: fixed; inset: 0; z-index: 0; }
+
+/* ── Top bar ── */
+#topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 18px 26px 30px;
+  background: linear-gradient(to bottom, rgba(4,4,10,0.97) 50%, transparent);
+  pointer-events: none;
+}
+
+#title-block h1 {
+  font-family: var(--sans);
+  font-size: 14px; font-weight: 800;
+  letter-spacing: 0.14em; text-transform: uppercase;
+}
+#title-block p {
+  font-size: 10px; color: var(--muted);
+  letter-spacing: 0.07em; margin-top: 4px;
+  font-style: italic;
+}
+
+/* Model switcher */
+#model-switcher {
+  display: flex; gap: 6px;
+  pointer-events: all;
+}
+
+.model-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px; letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 12px; border-radius: 2px;
+  cursor: pointer; transition: all 0.2s;
+}
+.model-btn:hover { border-color: var(--accent); color: var(--text); }
+.model-btn.active {
+  background: rgba(124,106,247,0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Right panel ── */
+#right-panel {
+  position: fixed; top: 80px; right: 22px;
+  z-index: 10; width: 210px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px; padding: 12px 14px;
+  backdrop-filter: blur(14px);
+}
+
+.panel-label {
+  font-size: 9px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--muted);
+  margin-bottom: 9px;
+}
+
+.group-row {
+  display: flex; align-items: center; gap: 7px;
+  cursor: pointer; padding: 2px 0; transition: opacity 0.15s;
+  pointer-events: all;
+}
+.group-row:hover { opacity: 0.7; }
+.group-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.group-name { font-size: 10px; letter-spacing: 0.05em; flex: 1; }
+.group-count { font-size: 9px; color: var(--muted); }
+
+input[type=range] { width: 100%; accent-color: var(--accent); margin-top: 5px; }
+.slider-row { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); margin-top: 2px; }
+
+.ctrl-btn {
+  width: 100%; background: rgba(124,106,247,0.08);
+  border: 1px solid rgba(124,106,247,0.25);
+  color: var(--accent); font-family: var(--mono);
+  font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 7px; border-radius: 2px; cursor: pointer; transition: background 0.2s;
+  pointer-events: all;
+}
+.ctrl-btn:hover { background: rgba(124,106,247,0.18); }
+.ctrl-btn.active { background: rgba(124,106,247,0.25); border-color: var(--accent); }
+.ctrl-btn + .ctrl-btn { margin-top: 5px; }
+
+/* ── Tooltip ── */
+#tooltip {
+  position: fixed; z-index: 20;
+  pointer-events: none; display: none;
+  min-width: 230px;
+}
+.tt-box {
+  background: rgba(4,4,10,0.96);
+  border: 1px solid var(--border);
+  border-radius: 3px; padding: 13px 15px;
+  backdrop-filter: blur(20px);
+}
+.tt-word {
+  font-family: var(--sans);
+  font-size: 20px; font-weight: 700; margin-bottom: 3px;
+}
+.tt-probe {
+  font-size: 9px; color: var(--muted); font-style: italic;
+  margin-bottom: 10px; line-height: 1.5;
+  border-left: 2px solid var(--border); padding-left: 7px;
+}
+.tt-row {
+  display: flex; justify-content: space-between;
+  font-size: 10px; padding: 2px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.tt-row:last-child { border-bottom: none; }
+.tt-key { color: var(--muted); }
+.tt-val { font-weight: 500; }
+.bias-track {
+  height: 2px; background: rgba(255,255,255,0.06);
+  border-radius: 2px; margin: 8px 0 4px; overflow: hidden;
+}
+.bias-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+
+/* ── Bottom bias table ── */
+#bias-table {
+  position: fixed; bottom: 22px; left: 22px;
+  z-index: 10; width: 580px;
+  transition: width 0.2s;
+  user-select: none;
+}
+#bias-table.collapsed { width: auto; }
+#table-header {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 8px;
+  cursor: grab;
+}
+#table-header.dragging { cursor: grabbing; }
+#table-body { display: block; }
+#bias-table.collapsed #table-body { display: none; }
+#bias-table.collapsed #table-header { margin-bottom: 0; }
+.table-scroll {
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+.table-scroll::-webkit-scrollbar { width: 3px; }
+.table-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+table { width: 100%; border-collapse: collapse; font-size: 9.5px; }
+thead th {
+  position: sticky; top: 0;
+  background: rgba(4,4,10,0.95);
+  text-align: left; color: var(--muted); font-weight: 400;
+  padding: 3px 8px 4px 0; letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--border);
+  z-index: 1;
+}
+td { padding: 4px 8px 4px 0; border-bottom: 1px solid rgba(255,255,255,0.03); vertical-align: middle; }
+td.num { font-variant-numeric: tabular-nums; }
+.mbar { height: 2px; border-radius: 1px; }
+.icon-btn {
+  background: none; border: none; color: var(--muted);
+  font-family: var(--mono); font-size: 11px;
+  cursor: pointer; padding: 1px 5px; border-radius: 2px;
+  transition: color 0.15s; line-height: 1; pointer-events: all;
+  margin-left: auto;
+}
+.icon-btn:hover { color: var(--text); }
+
+/* ── Bias chart ── */
+.chart-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 46px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.chart-row:last-child { border-bottom: none; }
+.chart-label { font-size: 9.5px; color: var(--text); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chart-track {
+  position: relative; height: 6px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 3px; overflow: visible;
+}
+.chart-zero {
+  position: absolute; top: -3px; bottom: -3px;
+  width: 1px; background: rgba(255,255,255,0.2);
+}
+.chart-fill {
+  position: absolute; top: 0; height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease, left 0.4s ease;
+}
+.chart-score { font-size: 9px; font-family: var(--mono); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.chart-group-header {
+  font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--muted); padding: 8px 0 3px;
+  grid-column: 1 / -1;
+}
+
+/* ── Loading ── */
+#loader {
+  position: fixed; inset: 0; background: var(--bg); z-index: 100;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; transition: opacity 0.7s;
+}
+#loader h2 { font-family: var(--sans); font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
+.spinner { width: 36px; height: 36px; border: 1px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+#loader-msg { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Info ── */
+#info {
+  position: fixed; bottom: 22px; right: 22px; z-index: 10;
+  font-size: 9px; color: rgba(255,255,255,0.18);
+  text-align: right; line-height: 2; pointer-events: none;
+}
+
+.fadein { animation: fi 0.6s ease forwards; opacity: 0; }
+@keyframes fi { to { opacity: 1; } }
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="spinner"></div>
+  <h2>Embedding Space</h2>
+  <div id="loader-msg">Waiting for embeddings JSON…</div>
+</div>
+
+<div id="topbar" class="fadein" style="animation-delay:.2s">
+  <div id="title-block">
+    <h1>Word Embedding Bias — Geometric Analysis</h1>
+    <p>Contextual probes · "[word] is [anchor]." · Cosine distance in embedding space</p>
+  </div>
+  <div id="model-switcher"></div>
+</div>
+
+<div id="right-panel" class="fadein" style="animation-delay:.4s">
+  <div class="panel">
+    <div class="panel-label">Groups</div>
+    <div id="group-toggles"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-label">Point Size</div>
+    <input type="range" id="size-slider" min="0.1" max="3.5" step="0.1" value="1.2">
+    <div class="slider-row"><span>small</span><span>large</span></div>
+  </div>
+  <div class="panel">
+    <div class="panel-label">View</div>
+    <button class="ctrl-btn active" id="btn-rotate" onclick="toggleRotate()">⟳ Auto-Rotate</button>
+    <button class="ctrl-btn" id="btn-lines" onclick="toggleLines()">⊶ Anchor Lines</button>
+    <button class="ctrl-btn" onclick="resetCam()">⌖ Reset Camera</button>
+  </div>
+</div>
+
+<div id="bias-table" class="panel fadein" style="animation-delay:.6s">
+  <div id="table-header">
+    <span class="panel-label" style="margin-bottom:0">Bias Analysis</span>
+    <button class="ctrl-btn" id="btn-view-pairs" onclick="switchTableView('pairs')" style="width:auto;padding:3px 9px;margin-top:0">Subject pairs</button>
+    <button class="ctrl-btn" id="btn-view-statements" onclick="switchTableView('statements')" style="width:auto;padding:3px 9px;margin-top:0">Hot-button issues</button>
+    <button class="ctrl-btn" id="btn-view-chart" onclick="switchTableView('chart')" style="width:auto;padding:3px 9px;margin-top:0">Bias chart</button>
+    <button class="icon-btn" id="btn-collapse" onclick="toggleTableCollapse()" title="Minimise">—</button>
+    <button class="icon-btn" onclick="document.getElementById('bias-table').style.display='none'" title="Close">✕</button>
+  </div>
+  <div id="table-body">
+    <div id="view-pairs">
+      <div class="table-scroll">
+        <table><thead><tr>
+          <th>probe sentence</th><th>subject</th><th>anchor</th><th>similarity</th><th style="width:60px">proximity</th>
+        </tr></thead><tbody id="pair-rows"></tbody></table>
+      </div>
+    </div>
+    <div id="view-statements" style="display:none">
+      <div class="table-scroll">
+        <table><thead><tr>
+          <th>topic</th><th>statement A</th><th>bias A</th><th>statement B</th><th>bias B</th><th style="width:55px">gap</th>
+        </tr></thead><tbody id="statement-rows"></tbody></table>
+      </div>
+    </div>
+    <div id="view-chart" style="display:none">
+      <div style="font-size:9px;color:var(--muted);margin-bottom:8px;line-height:1.6">
+        Each bar = bias score (positive affinity − negative affinity).<br>
+        <span style="color:#4ade80">Green = closer to "good" cluster</span> · <span style="color:#fb923c">Orange = closer to "bad" cluster</span> · Zero = perfectly neutral.
+      </div>
+      <div class="table-scroll" style="max-height:220px">
+        <div id="chart-bars"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip">
+  <div class="tt-box">
+    <div class="tt-word" id="tt-word"></div>
+    <div class="tt-probe" id="tt-probe"></div>
+    <div class="bias-track"><div class="bias-fill" id="tt-bar"></div></div>
+    <div class="tt-row"><span class="tt-key">group</span><span class="tt-val" id="tt-group"></span></div>
+    <div class="tt-row"><span class="tt-key">bias score</span><span class="tt-val" id="tt-bias"></span></div>
+    <div class="tt-row"><span class="tt-key">→ positive cluster</span><span class="tt-val" id="tt-pos"></span></div>
+    <div class="tt-row"><span class="tt-key">→ negative cluster</span><span class="tt-val" id="tt-neg"></span></div>
+  </div>
+</div>
+
+<div id="canvas-container"></div>
+
+<div id="info">
+  drag to rotate · scroll to zoom · hover to inspect<br>
+  bias score = sim(positive anchors) − sim(negative anchors)
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─── State ────────────────────────────────────────────────────────────────
+let scene, camera, renderer, raycaster, mouse;
+let nodeObjects = [], labelSprites = [], anchorLineGroup;
+let autoRotate = true, showLines = false;
+let groupVisibility = {};
+let currentData = null;
+let loadedModels = {};   // model_key → data
+const SCALE = 13;
+
+// ─── Boot ─────────────────────────────────────────────────────────────────
+const MODEL_FILES = {
+  "e5-large-v2": "embeddings_e5-large-v2.json",
+  "minilm":      "embeddings_minilm.json",
+};
+
+async function boot() {
+  setMsg("Initializing Three.js…");
+  initThree();
+  animate();
+
+  // Try loading primary model first
+  const keys = Object.keys(MODEL_FILES);
+  let loaded = false;
+  for (const key of keys) {
+    try {
+      setMsg(`Loading ${MODEL_FILES[key]}…`);
+      const res = await fetch(MODEL_FILES[key]);
+      if (!res.ok) continue;
+      const data = await res.json();
+      loadedModels[key] = data;
+      if (!loaded) { loadScene(data); loaded = true; }
+    } catch(_) {}
+  }
+
+  if (!loaded) {
+    setMsg("⚠  No JSON found. Run: python pipeline.py  (then serve this folder via python -m http.server 8000)");
+    return;
+  }
+
+  buildModelSwitcher();
+  hideLoader();
+}
+
+// ─── Three.js ─────────────────────────────────────────────────────────────
+function initThree() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x04040a);
+  scene.fog = new THREE.FogExp2(0x04040a, 0.017);
+
+  const W = window.innerWidth, H = window.innerHeight;
+  camera = new THREE.PerspectiveCamera(58, W/H, 0.001, 1000);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(W, H);
+  document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+  raycaster = new THREE.Raycaster();
+  raycaster.params.Points = { threshold: 0.4 };
+  mouse = new THREE.Vector2(-9, -9);
+
+
+
+  setupOrbit();
+  window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+  window.addEventListener('mousemove', onHover);
+}
+
+// ─── Orbit ────────────────────────────────────────────────────────────────
+// target = where we want to be, sph = current (lerped toward target each frame)
+let sph    = { t: Math.PI/4, p: Math.PI/3, r: 36 };
+let target = { t: Math.PI/4, p: Math.PI/3, r: 36 };
+let drag = false, pm = {x:0,y:0};
+
+function setupOrbit() {
+  const el = renderer.domElement;
+  el.addEventListener('mousedown', e => {
+    drag = true;
+    pm = {x: e.clientX, y: e.clientY};
+  });
+  window.addEventListener('mouseup', () => { drag = false; });
+  window.addEventListener('mousemove', e => {
+    if (!drag) return;
+    const dx = e.clientX - pm.x;
+    const dy = e.clientY - pm.y;
+    target.t -= dx * 0.0018;                                          // was 0.005
+    target.p = Math.max(0.2, Math.min(Math.PI - 0.2, target.p - dy * 0.0018));
+    pm = {x: e.clientX, y: e.clientY};
+    autoRotate = false;
+    document.getElementById('btn-rotate').classList.remove('active');
+  });
+  el.addEventListener('wheel', e => {
+    e.preventDefault();
+    target.r = Math.max(0.1, target.r + e.deltaY * 0.012);
+  }, { passive: false });
+}
+
+function updateCamera() {
+  if (autoRotate) target.t += 0.0018;
+
+  // Smooth lerp — 0.08 = gentle, increase toward 1.0 for snappier
+  const ease = 0.08;
+  sph.t += (target.t - sph.t) * ease;
+  sph.p += (target.p - sph.p) * ease;
+  sph.r += (target.r - sph.r) * ease;
+
+  camera.position.set(
+    sph.r * Math.sin(sph.p) * Math.sin(sph.t),
+    sph.r * Math.cos(sph.p),
+    sph.r * Math.sin(sph.p) * Math.cos(sph.t)
+  );
+  camera.lookAt(0, 0, 0);
+}
+
+// ─── Scene build ──────────────────────────────────────────────────────────
+function clearScene() {
+  nodeObjects.forEach(({mesh, halo}) => { scene.remove(mesh); scene.remove(halo); });
+  labelSprites.forEach(({sprite}) => scene.remove(sprite));
+  if (anchorLineGroup) scene.remove(anchorLineGroup);
+  nodeObjects = []; labelSprites = [];
+}
+
+function loadScene(data) {
+  clearScene();
+  currentData = data;
+  groupVisibility = {};
+
+  data.nodes.forEach(node => {
+    const pos = new THREE.Vector3(node.x * SCALE, node.y * SCALE, node.z * SCALE);
+    const col = new THREE.Color(node.color);
+    const isAnchor = node.is_anchor;
+    const r = isAnchor ? 0.2 : 0.13;
+
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(r, 9, 9),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: isAnchor ? 0.95 : 0.82 })
+    );
+    mesh.position.copy(pos);
+    mesh.userData = node;
+    scene.add(mesh);
+
+    // Canvas radial gradient glow sprite — real soft bloom
+    const halo = makeGlow(node.color, isAnchor);
+    halo.position.copy(pos);
+    const glowSize = isAnchor ? 3.2 : 2.2;
+    halo.scale.set(glowSize, glowSize, 1);
+    scene.add(halo);
+
+    const sprite = makeLabel(node.subject, node.color, isAnchor);
+    sprite.position.copy(pos);
+    sprite.position.y += r * 2 + 0.28;
+    sprite.userData = { group: node.group };
+    scene.add(sprite);
+
+    nodeObjects.push({ mesh, halo, data: node });
+    labelSprites.push({ sprite, group: node.group });
+    groupVisibility[node.group] = true;
+  });
+
+  buildAnchorLines(data);
+  buildGroupToggles(data);
+  buildBiasTable(data);
+}
+
+function makeLabel(text, color, bold) {
+  const cv = document.createElement('canvas');
+  const cx = cv.getContext('2d');
+  const fs = bold ? 26 : 20;
+  cv.width = 256; cv.height = 56;
+  cx.font = `${bold ? '700' : '400'} ${fs}px "JetBrains Mono", monospace`;
+  cx.fillStyle = color;
+  cx.globalAlpha = bold ? 0.95 : 0.72;
+  cx.fillText(text, 4, fs + 10);
+  const mat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false });
+  const sp = new THREE.Sprite(mat);
+  sp.scale.set(3.4, 0.85, 1);
+  return sp;
+}
+
+function makeGlow(hexColor, isAnchor) {
+  const size = 128;
+  const cv = document.createElement('canvas');
+  cv.width = size; cv.height = size;
+  const cx = cv.getContext('2d');
+  const half = size / 2;
+
+  const c = new THREE.Color(hexColor);
+  const r = Math.round(c.r * 255);
+  const g = Math.round(c.g * 255);
+  const b = Math.round(c.b * 255);
+
+  // Softer gradient — tight bright core, fast falloff
+  const grad = cx.createRadialGradient(half, half, 0, half, half, half);
+  const alpha = isAnchor ? 0.28 : 0.18;   // was 0.72 / 0.52
+  grad.addColorStop(0,    `rgba(${r},${g},${b},${alpha})`);
+  grad.addColorStop(0.15, `rgba(${r},${g},${b},${alpha * 0.5})`);
+  grad.addColorStop(0.4,  `rgba(${r},${g},${b},${alpha * 0.12})`);
+  grad.addColorStop(0.7,  `rgba(${r},${g},${b},${alpha * 0.03})`);
+  grad.addColorStop(1.0,  `rgba(${r},${g},${b},0)`);
+
+  cx.fillStyle = grad;
+  cx.fillRect(0, 0, size, size);
+
+  const tex = new THREE.CanvasTexture(cv);
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  return new THREE.Sprite(mat);
+}
+
+function buildAnchorLines(data) {
+  anchorLineGroup = new THREE.Group();
+  const posA = data.nodes.filter(n => n.group === 'Anchors+');
+  const negA = data.nodes.filter(n => n.group === 'Anchors-');
+  const targets = data.nodes.filter(n => !n.is_anchor);
+
+  targets.forEach(t => {
+    const tp = new THREE.Vector3(t.x*SCALE, t.y*SCALE, t.z*SCALE);
+    const closest = (arr) => arr.reduce((b, a) => {
+      const d = new THREE.Vector3(a.x*SCALE,a.y*SCALE,a.z*SCALE).distanceTo(tp);
+      return d < b.d ? {a, d} : b;
+    }, {d:Infinity, a:null}).a;
+
+    const cp = closest(posA);
+    if (cp) anchorLineGroup.add(makeLine(tp, new THREE.Vector3(cp.x*SCALE,cp.y*SCALE,cp.z*SCALE), 0x4ade80, 0.07));
+    const cn = closest(negA);
+    if (cn) anchorLineGroup.add(makeLine(tp, new THREE.Vector3(cn.x*SCALE,cn.y*SCALE,cn.z*SCALE), 0xfb923c, 0.055));
+  });
+
+  anchorLineGroup.visible = false;
+  scene.add(anchorLineGroup);
+}
+
+function makeLine(a, b, color, opacity) {
+  return new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([a, b]),
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity })
+  );
+}
+
+// ─── Group toggles ─────────────────────────────────────────────────────────
+function buildGroupToggles(data) {
+  const container = document.getElementById('group-toggles');
+  container.innerHTML = '';
+  const counts = {};
+  data.nodes.forEach(n => { counts[n.group] = (counts[n.group]||0)+1; });
+
+  Object.entries(data.meta.groups).forEach(([name, color]) => {
+    const row = document.createElement('div');
+    row.className = 'group-row';
+    row.innerHTML = `<div class="group-dot" style="background:${color}"></div>
+      <span class="group-name">${name}</span>
+      <span class="group-count">${counts[name]||0}</span>`;
+    row.addEventListener('click', () => {
+      groupVisibility[name] = !groupVisibility[name];
+      row.style.opacity = groupVisibility[name] ? '1' : '0.3';
+      applyVisibility();
+    });
+    container.appendChild(row);
+  });
+
+  document.getElementById('size-slider').addEventListener('input', e => {
+    const s = parseFloat(e.target.value);
+    nodeObjects.forEach(({mesh, halo, data}) => {
+      mesh.scale.setScalar(s);
+      const baseGlow = data.is_anchor ? 3.2 : 2.2;
+      const glowSize = baseGlow * s;
+      halo.scale.set(glowSize, glowSize, 1);
+    });
+  });
+}
+
+function applyVisibility() {
+  nodeObjects.forEach(({mesh, halo, data: n}) => {
+    const v = !!groupVisibility[n.group];
+    mesh.visible = v; halo.visible = v;
+  });
+  labelSprites.forEach(({sprite, group}) => sprite.visible = !!groupVisibility[group]);
+}
+
+// ─── Bias table ────────────────────────────────────────────────────────────
+function buildBiasTable(data) {
+  const tbody = document.getElementById('pair-rows');
+  tbody.innerHTML = '';
+  if (!data.bias_pairs?.length) { document.getElementById('bias-table').style.display='none'; return; }
+  document.getElementById('bias-table').style.display='';
+
+  [...data.bias_pairs]
+    .sort((a,b) => Math.abs(b.similarity) - Math.abs(a.similarity))
+    .forEach(p => {
+      const c = p.similarity > 0.35 ? '#4ade80' : p.similarity < 0.25 ? '#fb923c' : '#e6e4f2';
+      const pct = Math.round(p.similarity * 100);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="color:var(--muted);font-style:italic;font-size:9px">${p.probe_sentence}</td>
+        <td>${p.subject}</td>
+        <td>${p.anchor}</td>
+        <td class="num" style="color:${c}">${p.similarity >= 0 ? '+' : ''}${p.similarity.toFixed(4)}</td>
+        <td><div class="mbar" style="width:${Math.max(2,pct)}%;background:${c};opacity:0.75"></div></td>`;
+      tbody.appendChild(tr);
+    });
+
+  buildStatementTable(data);
+  buildBiasChart(data);
+  switchTableView('pairs');
+}
+
+function buildStatementTable(data) {
+  const tbody = document.getElementById('statement-rows');
+  tbody.innerHTML = '';
+  if (!data.statement_pairs?.length) {
+    document.getElementById('btn-view-statements').style.display = 'none';
+    return;
+  }
+
+  data.statement_pairs.forEach(p => {
+    // A leans positive = green, B leans positive = orange, tight = neutral
+    const aWins = p.bias_a > p.bias_b;
+    const gap = Math.abs(p.gap);
+    const colorA = aWins ? '#4ade80' : (gap > 0.02 ? '#fb923c' : '#e6e4f2');
+    const colorB = !aWins ? '#4ade80' : (gap > 0.02 ? '#fb923c' : '#e6e4f2');
+    const gapColor = gap > 0.05 ? '#f87171' : gap > 0.02 ? '#f59e0b' : '#4ade80';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-size:9px;color:var(--muted);white-space:nowrap">${p.topic}</td>
+      <td style="font-size:9px;font-style:italic;max-width:160px">${p.a}</td>
+      <td class="num" style="color:${colorA}">${p.bias_a >= 0 ? '+' : ''}${p.bias_a.toFixed(3)}</td>
+      <td style="font-size:9px;font-style:italic;max-width:160px">${p.b}</td>
+      <td class="num" style="color:${colorB}">${p.bias_b >= 0 ? '+' : ''}${p.bias_b.toFixed(3)}</td>
+      <td class="num" style="color:${gapColor}">${p.gap >= 0 ? '+' : ''}${p.gap.toFixed(3)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function buildBiasChart(data) {
+  const container = document.getElementById('chart-bars');
+  container.innerHTML = '';
+
+  // Group non-anchor nodes by their group, sorted by bias score within each group
+  const groups = {};
+  data.nodes
+    .filter(n => !n.is_anchor)
+    .forEach(n => {
+      if (!groups[n.group]) groups[n.group] = [];
+      groups[n.group].push(n);
+    });
+
+  // Find absolute max bias for scaling (exclude anchors)
+  const allScores = data.nodes.filter(n => !n.is_anchor).map(n => n.bias_score);
+  const maxAbs = Math.max(...allScores.map(Math.abs), 0.01);
+
+  Object.entries(groups).forEach(([groupName, nodes]) => {
+    // Group header
+    const hdr = document.createElement('div');
+    hdr.className = 'chart-group-header';
+    hdr.style.color = nodes[0].color;
+    hdr.textContent = groupName;
+    container.appendChild(hdr);
+
+    // Sort descending by bias score so you see the ranking clearly
+    [...nodes].sort((a, b) => b.bias_score - a.bias_score).forEach(node => {
+      const score = node.bias_score;
+      const isPos = score >= 0;
+      const barColor = isPos ? '#4ade80' : '#fb923c';
+      // Zero line sits at 50% of track width
+      const halfW = 50; // percent, the zero point
+      const barPct = (Math.abs(score) / maxAbs) * halfW;
+
+      const row = document.createElement('div');
+      row.className = 'chart-row';
+
+      // Left = zero, bar extends right (positive) or fills from zero leftward (negative)
+      const leftPct  = isPos ? halfW : halfW - barPct;
+      const widthPct = barPct;
+
+      row.innerHTML = `
+        <div class="chart-label" style="color:${node.color}">${node.subject}</div>
+        <div class="chart-track">
+          <div class="chart-zero" style="left:${halfW}%"></div>
+          <div class="chart-fill" style="left:${leftPct}%;width:${widthPct}%;background:${barColor};opacity:0.85"></div>
+        </div>
+        <div class="chart-score" style="color:${barColor}">${score >= 0 ? '+' : ''}${score.toFixed(3)}</div>`;
+      container.appendChild(row);
+    });
+  });
+}
+
+function switchTableView(view) {
+  ['pairs','statements','chart'].forEach(v => {
+    const el = document.getElementById(`view-${v}`);
+    const btn = document.getElementById(`btn-view-${v}`);
+    if (el)  el.style.display  = v === view ? '' : 'none';
+    if (btn) btn.classList.toggle('active', v === view);
+  });
+}
+
+// ─── Model switcher ────────────────────────────────────────────────────────
+function buildModelSwitcher() {
+  const container = document.getElementById('model-switcher');
+  container.innerHTML = '';
+  const availableKeys = Object.keys(loadedModels);
+  if (availableKeys.length < 2) return; // hide if only one model
+
+  availableKeys.forEach(key => {
+    const btn = document.createElement('button');
+    btn.className = 'model-btn' + (loadedModels[key] === currentData ? ' active' : '');
+    btn.textContent = loadedModels[key].meta.model_label;
+    btn.addEventListener('click', () => {
+      loadScene(loadedModels[key]);
+      container.querySelectorAll('.model-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    container.appendChild(btn);
+  });
+}
+
+// ─── Tooltip hover ─────────────────────────────────────────────────────────
+let hoveredMesh = null;
+
+function onHover(e) {
+  mouse.x = (e.clientX / innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / innerHeight) * 2 + 1;
+  const tip = document.getElementById('tooltip');
+  raycaster.setFromCamera(mouse, camera);
+  const meshes = nodeObjects.filter(o => o.mesh.visible).map(o => o.mesh);
+  const hits = raycaster.intersectObjects(meshes);
+
+  if (hits.length) {
+    const n = hits[0].object.userData;
+    if (hoveredMesh !== hits[0].object) {
+      if (hoveredMesh) hoveredMesh.scale.setScalar(1);
+      hoveredMesh = hits[0].object;
+      hoveredMesh.scale.setScalar(2.2);
+    }
+    document.getElementById('tt-word').textContent = n.subject;
+    document.getElementById('tt-word').style.color = n.color;
+    document.getElementById('tt-probe').textContent = n.example_probe || `${n.subject} is good.`;
+    document.getElementById('tt-group').textContent = n.group;
+    const b = n.bias_score;
+    document.getElementById('tt-bias').textContent = (b>=0?'+':'') + b.toFixed(4);
+    document.getElementById('tt-bias').style.color = b >= 0 ? '#4ade80' : '#fb923c';
+    document.getElementById('tt-pos').textContent = n.positive_affinity.toFixed(4);
+    document.getElementById('tt-neg').textContent = n.negative_affinity.toFixed(4);
+    const pct = Math.max(2, Math.min(100, Math.round(((b + 0.4) / 0.8) * 100)));
+    const bar = document.getElementById('tt-bar');
+    bar.style.width = pct + '%';
+    bar.style.background = b >= 0 ? '#4ade80' : '#fb923c';
+    tip.style.display = 'block';
+    tip.style.left = (e.clientX + 18) + 'px';
+    tip.style.top  = Math.max(10, e.clientY - 70) + 'px';
+  } else {
+    if (hoveredMesh) { hoveredMesh.scale.setScalar(1); hoveredMesh = null; }
+    tip.style.display = 'none';
+  }
+}
+
+// ─── Controls ──────────────────────────────────────────────────────────────
+function toggleRotate() {
+  autoRotate = !autoRotate;
+  document.getElementById('btn-rotate').classList.toggle('active', autoRotate);
+}
+function toggleLines() {
+  showLines = !showLines;
+  if (anchorLineGroup) anchorLineGroup.visible = showLines;
+  document.getElementById('btn-lines').classList.toggle('active', showLines);
+}
+function resetCam() {
+  sph    = { t: Math.PI/4, p: Math.PI/3, r: 36 };
+  target = { t: Math.PI/4, p: Math.PI/3, r: 36 };
+  autoRotate = true;
+  document.getElementById('btn-rotate').classList.add('active');
+}
+function toggleTableCollapse() {
+  const tbl = document.getElementById('bias-table');
+  const btn = document.getElementById('btn-collapse');
+  const collapsed = tbl.classList.toggle('collapsed');
+  btn.textContent = collapsed ? '＋' : '—';
+  btn.title = collapsed ? 'Expand' : 'Minimise';
+}
+
+// ─── Animate ───────────────────────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  updateCamera();
+  renderer.render(scene, camera);
+}
+
+// ─── Loader utils ──────────────────────────────────────────────────────────
+function setMsg(msg) { document.getElementById('loader-msg').textContent = msg; }
+function hideLoader() {
+  const l = document.getElementById('loader');
+  l.style.opacity = '0';
+  setTimeout(() => l.style.display = 'none', 700);
+}
+
+// ─── Draggable bias table ──────────────────────────────────────────────────
+(function() {
+  let dragging = false;
+  let ox = 0, oy = 0;   // offset from mouse to panel top-left
+
+  const panel  = document.getElementById('bias-table');
+  const header = document.getElementById('table-header');
+
+  header.addEventListener('mousedown', e => {
+    // Don't drag if clicking a button
+    if (e.target.tagName === 'BUTTON') return;
+    dragging = true;
+    header.classList.add('dragging');
+
+    const rect = panel.getBoundingClientRect();
+    ox = e.clientX - rect.left;
+    oy = e.clientY - rect.top;
+
+    // Switch from bottom-anchored to top-anchored positioning
+    panel.style.bottom = 'auto';
+    panel.style.top    = rect.top + 'px';
+    panel.style.left   = rect.left + 'px';
+
+    e.preventDefault();
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const x = e.clientX - ox;
+    const y = e.clientY - oy;
+    // Clamp within viewport
+    const maxX = window.innerWidth  - panel.offsetWidth;
+    const maxY = window.innerHeight - panel.offsetHeight;
+    panel.style.left = Math.max(0, Math.min(maxX, x)) + 'px';
+    panel.style.top  = Math.max(0, Math.min(maxY, y)) + 'px';
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    header.classList.remove('dragging');
+  });
+})();
+
+boot();
+</script>
+</body>
+</html>

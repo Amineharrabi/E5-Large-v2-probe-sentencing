@@ -56,26 +56,6 @@ surviving in the "lightweight" model is your twist ending.
 
 ---
 
-## Video Segments
-
-| Segment | What to do |
-|---|---|
-| Cold open | Load page, hide panels, let auto-rotate run |
-| Baseline | Enable only Anchors+ and Anchors- — observe separation |
-| First anomaly | Enable Gender + Profession — asymmetric clustering |
-| Political test | Enable Politics, toggle Anchor Lines on |
-| Explanation | Hover individual words, read probe sentences in tooltip |
-| Twist | Click model switcher to MiniLM — same geometry, same biases |
-
----
-
-## Why E5 needs the "passage: " prefix
-
-E5-Large-v2 was trained with explicit task prefixes. Omitting it degrades
-retrieval performance by ~3–5% on benchmarks. The pipeline adds it automatically.
-You don't need to think about it, but it's worth mentioning in the video explanation.
-
----
 
 ## Files
 
